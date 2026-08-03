@@ -1,0 +1,12 @@
+# Private, never-published copies (real personal values, git history backup)
+.private/
+
+# Local screenshots / scratch captures
+Snapshots/
+
+# Python
+__pycache__/
+*.pyc
+
+# Claude Code local settings
+.claude/settings.local.json
