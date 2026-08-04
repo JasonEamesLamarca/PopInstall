@@ -4,7 +4,7 @@
 #
 # Distro: Jason's Pop!_OS Custom Remix
 # Base:   Pop!_OS 24.04 LTS (noble)
-# Regenerated: 2026-08-03 22:08 UTC
+# Regenerated: 2026-08-04 17:38 UTC
 
 set -euo pipefail
 
@@ -119,11 +119,12 @@ echo ">>> [10] Synology NAS mount (home/Drive -> /dat/sd via CIFS)"
 sudo mkdir -p /dat/sd
 sudo mkdir -p /etc/cifs
 sudo chmod 700 /etc/cifs
-# Create the root-only credentials file (password added out-of-band, never committed):
-#   printf 'username=NAS_USER\npassword=YOUR_NAS_PASSWORD\n' | sudo tee /etc/cifs/synology-nas >/dev/null
-sudo chmod 600 /etc/cifs/synology-nas
-# Append the fstab entry (single line):
-echo '//192.168.1.10/home/Drive  /dat/sd  cifs  credentials=/etc/cifs/synology-nas,uid=1000,gid=1000,file_mode=0777,dir_mode=0777,noperm,iocharset=utf8,nofail,_netdev,x-systemd.automount,x-systemd.idle-timeout=60  0  0' | sudo tee -a /etc/fstab >/dev/null
+# Credentials file (root-only, 0600). If a NAS password was supplied to the wizard it is
+# written now; otherwise a manual command is printed. The password is NEVER stored in this repo.
+if [ -n "${NAS_PASSWORD:-}" ]; then printf 'username=%s\npassword=%s\n' "NAS_USER" "${NAS_PASSWORD}" | sudo tee /etc/cifs/synology-nas >/dev/null; else echo "   -> create it by hand: printf 'username=NAS_USER\\npassword=YOUR_NAS_PASSWORD\\n' | sudo tee /etc/cifs/synology-nas"; fi
+sudo chmod 600 /etc/cifs/synology-nas 2>/dev/null || true
+# Append the fstab entry (single line), guarded so re-running never duplicates it:
+grep -q ' /dat/sd cifs ' /etc/fstab || echo '//192.168.1.10/home/Drive  /dat/sd  cifs  credentials=/etc/cifs/synology-nas,uid=1000,gid=1000,file_mode=0777,dir_mode=0777,noperm,iocharset=utf8,nofail,_netdev,x-systemd.automount,x-systemd.idle-timeout=60  0  0' | sudo tee -a /etc/fstab >/dev/null
 sudo systemctl daemon-reload
 sudo mount -a
 
@@ -543,7 +544,7 @@ sudo apt install -y nodejs
 # 'divergent branches' hint on every pull. Finally generates an ed25519 SSH keypair, the
 # modern default (smaller and faster than RSA, and accepted everywhere that matters).
 echo ">>> [19] git identity, defaults, and SSH key"
-git config --global user.name "Jason Eames"
+git config --global user.name "Your Name"
 git config --global user.email "you@example.com"
 git config --global init.defaultBranch main
 git config --global pull.rebase false

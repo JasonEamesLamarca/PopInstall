@@ -30,6 +30,32 @@ next time anyone regenerates.
    - Keep `commands` as the exact, copy-pasteable steps.
    - Put anything future-you would want to know in `notes`.
 
+### Parameters (optional)
+
+If a step needs machine-specific input, add a `params` array. The wizard
+(`install-wizard.py`) prompts for each one; `tools/generate.py` bakes the
+`default` into `install.sh` and the Word guide.
+
+```json
+"params": [
+  { "token": "NAS_HOST", "prompt": "NAS / server IP or hostname", "default": "192.168.1.10" },
+  { "token": "NAS_PASSWORD", "prompt": "NAS password (optional)", "default": "", "secret": true }
+]
+```
+
+Two kinds of token, referenced differently inside `commands`:
+
+- **Non-secret** — write it as `{{TOKEN}}` in commands. `generate.py` replaces it
+  with `default`; the wizard replaces it with the user's answer.
+- **Secret** (`"secret": true`) — **never** write it as `{{TOKEN}}`. Reference it as a
+  shell variable `${TOKEN:-}` instead. The wizard passes it through the environment at
+  run time; it is never substituted into text and never written to `install.sh`, the
+  `.docx`, or the repo. Use `:-` so `install.sh` (run without the wizard) treats it as
+  empty under `set -u`.
+
+Tokens are collected by name across all selected steps, so the same `{{NAS_HOST}}`
+used by two entries is prompted for only once.
+
 2. Regenerate the outputs:
    ```bash
    python3 tools/generate.py

@@ -25,8 +25,9 @@ individual steps, or as a reference for how each tool was set up and *why*.
 
 | File | Purpose |
 |------|---------|
-| **`entries.json`** | The single source of truth. One entry per tool/customization: what, why, exact commands, and notes. |
-| **`install.sh`** | Auto-generated Bash script that reproduces every step in order. **Do not edit by hand.** |
+| **`entries.json`** | The single source of truth. One entry per tool/customization: what, why, exact commands, params, and notes. |
+| **`install-wizard.py`** | Interactive installer: pick which steps to apply from a menu, answer parameter prompts, run only those. |
+| **`install.sh`** | Auto-generated Bash script that reproduces **every** step in order. **Do not edit by hand.** |
 | **`docs/PopOS-Customization-Guide.docx`** | Auto-generated Word document with the same content as step-by-step procedures. |
 | **`tools/generate.py`** | Regenerates `install.sh` and the `.docx` from `entries.json`. |
 | **`tools/docx_writer.py`** | A tiny stdlib-only `.docx` writer (no pandoc/python-docx needed). |
@@ -52,26 +53,99 @@ stay in lockstep.
 
 ## Quick start
 
+Get the whole thing in **one download** — everything the installer needs
+(`entries.json`, the wallpapers in `img/`, the wizard) ships in the repo, so a
+clone *or* a ZIP works with no extra fetching:
+
 ```bash
+# Option A — clone
 git clone https://github.com/JasonEamesLamarca/PopInstall.git
 cd PopInstall
 
-# 1) READ the script and edit placeholders / remove steps you don't want
-less install.sh
+# Option B — download + unzip (no git required)
+curl -L https://github.com/JasonEamesLamarca/PopInstall/archive/refs/heads/main.zip -o PopInstall.zip
+unzip PopInstall.zip && cd PopInstall-main
+```
 
-# 2) Run it as your normal user (it calls sudo on the lines that need it)
+Only **Python 3** (already on Pop!_OS) and **bash** are required — the wizard is
+pure standard library, no `pip install` step. You can launch it from anywhere;
+it finds its own files and the `img/` wallpapers regardless of your current
+directory (override with `POPINSTALL_DIR` if you ever relocate them).
+
+There are two ways to install. Either way, run as your **normal user** — steps call
+`sudo` on the individual lines that need it.
+
+### Option 1 — Interactive wizard (recommended)
+
+Pick exactly the customizations you want from a menu, and the wizard prompts you for
+any parameters those steps need (NAS host, git identity, an optional NAS password, …):
+
+```bash
+./install-wizard.py
+```
+
+Your selection and your (non-secret) answers are **remembered between runs**. They're
+saved to `~/.config/popinstall/config.json` (0600), so the next launch pre-checks the
+same steps and pre-fills every prompt with what you entered last time — just press
+Enter to accept. **Secrets (e.g. the NAS password) are never written to disk** and are
+prompted fresh each time.
+
+Useful flags:
+
+```bash
+./install-wizard.py --list                 # list all steps and exit
+./install-wizard.py --all --dry-run        # preview the resolved commands for everything
+./install-wizard.py --only 10,19,31        # run just these steps
+./install-wizard.py --category Networking  # run a whole category
+./install-wizard.py --config ./my.json     # use a specific saved-preferences file
+./install-wizard.py --no-save              # don't read or write the saved config
+./install-wizard.py --log ./run.log        # write the transcript to a specific file
+./install-wizard.py --no-log               # don't write a transcript
+```
+
+### Logs — for troubleshooting
+
+**Every run writes a plain-text transcript** so you can copy/paste it if something
+goes wrong. It records the metadata (distro, Python, terminal size, the exact
+command line you ran), and for each step the exact commands, their live output,
+and the exit code. By default it lands in:
+
+```
+~/.local/state/popinstall/logs/run-<timestamp>.log
+```
+
+The path is printed at the start and end of every run (and again, highlighted, if
+any step fails). Change it with `--log PATH` or turn it off with `--no-log`.
+**Secrets are never written to the log** (or to the saved config): passwords are
+passed to steps through the environment and never resolved into the recorded
+commands.
+
+The menu is a full-screen picker: use **↑/↓** (or `j`/`k`) to move, **space** to
+toggle a step, **`c`** to toggle the whole category under the cursor, **`a`/`n`** for
+all/none, then **Enter** to run (**`q`** quits). The list scrolls automatically when
+it's taller than your terminal. Steps marked `*params` will prompt for input; nothing
+runs until you confirm, and `--dry-run` shows the exact commands without executing.
+On a terminal without curses it falls back to a numbered menu.
+
+### Option 2 — Run everything
+
+```bash
+# READ it first, edit placeholders / delete steps you don't want, then:
 bash install.sh
 ```
 
 > [!WARNING]
-> Run `install.sh` as your **normal user, not `sudo bash install.sh`**. Individual
-> lines use `sudo` where required; running the whole thing as root breaks user-scope
-> steps (e.g. VS Code extensions install into `~/.vscode`, and would land in `/root`).
+> Don't run either installer with `sudo` in front (`sudo bash install.sh` /
+> `sudo ./install-wizard.py`). Individual lines use `sudo` where required; running the
+> whole thing as root breaks user-scope steps (e.g. VS Code extensions install into
+> `~/.vscode`, and would land in `/root`). The wizard refuses to run as root unless you
+> pass `--allow-root`.
 
 ## Personalize before you run
 
-Machine-specific values are shipped as **placeholders** — replace them with your own,
-or delete the entries you don't need, before running:
+Machine-specific values are shipped as **placeholders**. The **wizard prompts you for
+these automatically** (so you can leave the files untouched); if you use `install.sh`
+instead, replace them by hand or delete the entries you don't need first:
 
 | Placeholder | Replace with |
 |-------------|--------------|

@@ -144,18 +144,52 @@
       "method": "manual + fstab",
       "requires_sudo": true,
       "commands": [
-        "sudo mkdir -p /dat/sd",
+        "sudo mkdir -p {{NAS_MOUNT}}",
         "sudo mkdir -p /etc/cifs",
         "sudo chmod 700 /etc/cifs",
-        "# Create the root-only credentials file (password added out-of-band, never committed):",
-        "#   printf 'username=NAS_USER\\npassword=YOUR_NAS_PASSWORD\\n' | sudo tee /etc/cifs/synology-nas >/dev/null",
-        "sudo chmod 600 /etc/cifs/synology-nas",
-        "# Append the fstab entry (single line):",
-        "echo '//192.168.1.10/home/Drive  /dat/sd  cifs  credentials=/etc/cifs/synology-nas,uid=1000,gid=1000,file_mode=0777,dir_mode=0777,noperm,iocharset=utf8,nofail,_netdev,x-systemd.automount,x-systemd.idle-timeout=60  0  0' | sudo tee -a /etc/fstab >/dev/null",
+        "# Credentials file (root-only, 0600). If a NAS password was supplied to the wizard it is",
+        "# written now; otherwise a manual command is printed. The password is NEVER stored in this repo.",
+        "if [ -n \"${NAS_PASSWORD:-}\" ]; then printf 'username=%s\\npassword=%s\\n' \"{{NAS_USER}}\" \"${NAS_PASSWORD}\" | sudo tee /etc/cifs/{{NAS_CRED_NAME}} >/dev/null; else echo \"   -> create it by hand: printf 'username={{NAS_USER}}\\\\npassword=YOUR_NAS_PASSWORD\\\\n' | sudo tee /etc/cifs/{{NAS_CRED_NAME}}\"; fi",
+        "sudo chmod 600 /etc/cifs/{{NAS_CRED_NAME}} 2>/dev/null || true",
+        "# Append the fstab entry (single line), guarded so re-running never duplicates it:",
+        "grep -q ' {{NAS_MOUNT}} cifs ' /etc/fstab || echo '//{{NAS_HOST}}/{{NAS_SHARE}}  {{NAS_MOUNT}}  cifs  credentials=/etc/cifs/{{NAS_CRED_NAME}},uid=1000,gid=1000,file_mode=0777,dir_mode=0777,noperm,iocharset=utf8,nofail,_netdev,x-systemd.automount,x-systemd.idle-timeout=60  0  0' | sudo tee -a /etc/fstab >/dev/null",
         "sudo systemctl daemon-reload",
         "sudo mount -a"
       ],
-      "notes": "The password is NOT in entries.json/install.sh by design -- create /etc/cifs/synology-nas by hand on each machine (root-only, chmod 600). Requires the 'User Home' service enabled on the Synology (Control Panel -> User & Group -> Advanced -> 'Enable user home service') for the //server/home share to exist. uid/gid 1000 map every file to local user youruser; file_mode/dir_mode 0777 plus 'noperm' make the mount readable/writable by every local account (this is the mount half of the 'accessible to all apps and accounts' requirement -- see entry 11, which sets the matching /dat permissions and grants Flatpak sandboxed apps access). If the mount fails with a protocol error, pin the SMB dialect by adding 'vers=3.1.1' (or 'vers=3.0' for older DSM) to the option list. x-systemd.automount defers the connection to first access and x-systemd.idle-timeout=60 unmounts after 60s idle, which suits the intermittent VPN link. To later add more NAS folders, reuse the same credentials file with additional fstab lines."
+      "notes": "The password is NOT in entries.json/install.sh by design -- create /etc/cifs/synology-nas by hand on each machine (root-only, chmod 600). Requires the 'User Home' service enabled on the Synology (Control Panel -> User & Group -> Advanced -> 'Enable user home service') for the //server/home share to exist. uid/gid 1000 map every file to local user youruser; file_mode/dir_mode 0777 plus 'noperm' make the mount readable/writable by every local account (this is the mount half of the 'accessible to all apps and accounts' requirement -- see entry 11, which sets the matching /dat permissions and grants Flatpak sandboxed apps access). If the mount fails with a protocol error, pin the SMB dialect by adding 'vers=3.1.1' (or 'vers=3.0' for older DSM) to the option list. x-systemd.automount defers the connection to first access and x-systemd.idle-timeout=60 unmounts after 60s idle, which suits the intermittent VPN link. To later add more NAS folders, reuse the same credentials file with additional fstab lines.",
+      "params": [
+        {
+          "token": "NAS_HOST",
+          "prompt": "NAS / server IP or hostname",
+          "default": "192.168.1.10"
+        },
+        {
+          "token": "NAS_SHARE",
+          "prompt": "NAS share path (after host, no leading slash)",
+          "default": "home/Drive"
+        },
+        {
+          "token": "NAS_MOUNT",
+          "prompt": "Local mount point",
+          "default": "/dat/sd"
+        },
+        {
+          "token": "NAS_USER",
+          "prompt": "NAS username",
+          "default": "NAS_USER"
+        },
+        {
+          "token": "NAS_CRED_NAME",
+          "prompt": "Credentials filename under /etc/cifs",
+          "default": "synology-nas"
+        },
+        {
+          "token": "NAS_PASSWORD",
+          "prompt": "NAS password (optional; blank = create the cred file yourself later)",
+          "default": "",
+          "secret": true
+        }
+      ]
     },
     {
       "id": 11,
@@ -500,19 +534,31 @@
       "method": "config file (user scope)",
       "requires_sudo": false,
       "commands": [
-        "git config --global user.name \"Jason Eames\"",
-        "git config --global user.email \"you@example.com\"",
+        "git config --global user.name \"{{GIT_NAME}}\"",
+        "git config --global user.email \"{{GIT_EMAIL}}\"",
         "git config --global init.defaultBranch main",
         "git config --global pull.rebase false",
         "",
         "# ed25519 keypair for pushing. Guarded so re-running install.sh can never",
         "# destroy an existing key -- ssh-keygen would happily overwrite it.",
         "mkdir -p ~/.ssh && chmod 700 ~/.ssh",
-        "[ -f ~/.ssh/id_ed25519 ] || ssh-keygen -t ed25519 -C \"you@example.com\" \\",
+        "[ -f ~/.ssh/id_ed25519 ] || ssh-keygen -t ed25519 -C \"{{GIT_EMAIL}}\" \\",
         "    -f ~/.ssh/id_ed25519 -N \"\""
       ],
       "description": "Gave git an identity and a key. git itself was already installed (2.43.0, stock with Pop!_OS) but had NO global configuration at all -- 'git config --global --list' returned nothing, so user.name and user.email were unset and there was no ~/.ssh directory. That matters more than it looks: git refuses to create a commit without an identity, so every commit attempt, including any made by Claude Code on this machine, would have failed with 'Author identity unknown' until this was set. Also sets two defaults worth having on a fresh image -- init.defaultBranch=main so new repos do not start on 'master', and pull.rebase=false to pin merge-on-pull behaviour rather than leaving git to print its 'divergent branches' hint on every pull. Finally generates an ed25519 SSH keypair, the modern default (smaller and faster than RSA, and accepted everywhere that matters).",
-      "notes": "MANUAL STEP STILL REQUIRED -- THE PUBLIC KEY: generating the keypair does not grant access to anything. Paste the contents of ~/.ssh/id_ed25519.pub into GitHub (Settings -> SSH and GPG keys) or Azure DevOps before 'git push' over SSH will work. Same shape of manual follow-up as the terminal-font step in entry 14. Test with 'ssh -T git@github.com'. EMPTY PASSPHRASE: the key is created with -N \"\" (no passphrase) so that unattended imaging and scripted pushes work without an agent prompt. That is a deliberate tradeoff -- anyone with read access to ~/.ssh/id_ed25519 has the key. On a laptop or shared machine, drop the -N \"\" and use ssh-agent instead. IDEMPOTENT AND NON-DESTRUCTIVE: the keygen is guarded by '[ -f ~/.ssh/id_ed25519 ]' because ssh-keygen with -f and -N will silently overwrite an existing private key, which would be unrecoverable and would lock this machine out of every service the old key was registered with. The git config lines are naturally idempotent (they overwrite the same keys). 'gh auth login' IS SEPARATE: entry 18 installs the GitHub CLI but this entry does not authenticate it, because that flow is interactive (browser or device code). Run 'gh auth login' by hand once per machine; it can also install its own SSH key if you would rather not paste one. SCOPE: everything here is user scope, in ~/.gitconfig and ~/.ssh, so this runs without sudo and applies only to this account. On a multi-user image each account needs its own run -- and its own key, which is the correct behaviour. VERIFY: git config --global --list should show user.name, user.email, init.defaultBranch and pull.rebase; 'ls -l ~/.ssh/id_ed25519*' should show a 600 private key and a 644 .pub."
+      "notes": "MANUAL STEP STILL REQUIRED -- THE PUBLIC KEY: generating the keypair does not grant access to anything. Paste the contents of ~/.ssh/id_ed25519.pub into GitHub (Settings -> SSH and GPG keys) or Azure DevOps before 'git push' over SSH will work. Same shape of manual follow-up as the terminal-font step in entry 14. Test with 'ssh -T git@github.com'. EMPTY PASSPHRASE: the key is created with -N \"\" (no passphrase) so that unattended imaging and scripted pushes work without an agent prompt. That is a deliberate tradeoff -- anyone with read access to ~/.ssh/id_ed25519 has the key. On a laptop or shared machine, drop the -N \"\" and use ssh-agent instead. IDEMPOTENT AND NON-DESTRUCTIVE: the keygen is guarded by '[ -f ~/.ssh/id_ed25519 ]' because ssh-keygen with -f and -N will silently overwrite an existing private key, which would be unrecoverable and would lock this machine out of every service the old key was registered with. The git config lines are naturally idempotent (they overwrite the same keys). 'gh auth login' IS SEPARATE: entry 18 installs the GitHub CLI but this entry does not authenticate it, because that flow is interactive (browser or device code). Run 'gh auth login' by hand once per machine; it can also install its own SSH key if you would rather not paste one. SCOPE: everything here is user scope, in ~/.gitconfig and ~/.ssh, so this runs without sudo and applies only to this account. On a multi-user image each account needs its own run -- and its own key, which is the correct behaviour. VERIFY: git config --global --list should show user.name, user.email, init.defaultBranch and pull.rebase; 'ls -l ~/.ssh/id_ed25519*' should show a 600 private key and a 644 .pub.",
+      "params": [
+        {
+          "token": "GIT_NAME",
+          "prompt": "Git user.name",
+          "default": "Your Name"
+        },
+        {
+          "token": "GIT_EMAIL",
+          "prompt": "Git user.email",
+          "default": "you@example.com"
+        }
+      ]
     },
     {
       "id": 20,
@@ -623,11 +669,23 @@
         "sudo dpkg -i ~/Downloads/synology-drive-client-*.deb",
         "sudo apt --fix-broken install -y",
         "synology-drive",
-        "# The above just launches the app -- server address (192.168.1.10), user NAS_USER, password, and each",
+        "# The above just launches the app -- server address ({{NAS_HOST}}), user {{NAS_USER}}, password, and each",
         "# folder pair (e.g. home/Drive -> /dat/sd, home/Music -> /dat/Music) are entered by hand in the setup",
         "# wizard on first launch. This step is not scriptable and must be repeated manually per machine."
       ],
-      "notes": "Runs as a per-user systemd unit generated from the standard XDG autostart entry it installs (~/.config/autostart/synology-drive-autostart.desktop), so it starts automatically on login with no extra service-enable step. Requires the same 'User Home' share setup on the Synology as entry 10 (Control Panel -> User & Group -> Advanced -> Enable user home service). Entry 11's /dat permissions (chmod 1777 + Flatpak override) are specific to the CIFS-mount path and don't apply here -- Drive Client writes as the logged-in user directly, so no extra permission opening is needed for this method."
+      "notes": "Runs as a per-user systemd unit generated from the standard XDG autostart entry it installs (~/.config/autostart/synology-drive-autostart.desktop), so it starts automatically on login with no extra service-enable step. Requires the same 'User Home' share setup on the Synology as entry 10 (Control Panel -> User & Group -> Advanced -> Enable user home service). Entry 11's /dat permissions (chmod 1777 + Flatpak override) are specific to the CIFS-mount path and don't apply here -- Drive Client writes as the logged-in user directly, so no extra permission opening is needed for this method.",
+      "params": [
+        {
+          "token": "NAS_HOST",
+          "prompt": "NAS / server IP or hostname",
+          "default": "192.168.1.10"
+        },
+        {
+          "token": "NAS_USER",
+          "prompt": "NAS username",
+          "default": "NAS_USER"
+        }
+      ]
     },
     {
       "id": 24,
