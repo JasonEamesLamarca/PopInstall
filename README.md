@@ -37,7 +37,7 @@ stay in lockstep.
 
 ## What it sets up
 
-35 entries across these areas (see the guide for the full detail on each):
+36 entries across these areas (see the guide for the full detail on each):
 
 | Area | Examples |
 |------|----------|
@@ -48,6 +48,7 @@ stay in lockstep.
 | **Browsers** | Native-package browser installs |
 | **Networking** | SMB/CIFS + NFS clients, NAS mount, **Wi-Fi analysis & security-auditing toolkit** |
 | **Communication / Email** | Evolution + Exchange/Microsoft 365 backend |
+| **Device Management** | **Microsoft Intune enrollment** (Company Portal, identity broker, Edge) so the machine registers in Entra ID for Conditional Access |
 | **Gaming, Printing, Power, Graphics drivers** | Steam, CUPS, session tweaks, GPU firmware |
 | **System Maintenance** | Full apt upgrade, PackageKit stack |
 
@@ -170,6 +171,32 @@ python3 tools/generate.py
 
 This rewrites `install.sh` and `docs/PopOS-Customization-Guide.docx`. Never edit
 those two files directly — they are generated artifacts.
+
+## Microsoft Intune enrollment (Conditional Access)
+
+Entry 36 enrolls the machine in **Microsoft Intune**, so it shows up in
+Microsoft Entra ID as a managed device and can meet Conditional Access rules
+such as *require a compliant device*. It installs everything needed from
+Microsoft's apt repos — the Microsoft Intune app (`intune-portal`), the
+Microsoft Identity Broker, `libpam-pwquality` and Microsoft Edge — starts the
+Intune services, then opens the Intune app for you to sign in:
+
+```bash
+./install-wizard.py --only 36
+```
+
+Sign in with your work account (with MFA) and accept the registration prompts.
+Then sign in to an **Edge** profile with the same account — on Linux, Edge is
+the only browser that passes the device's state to Conditional Access. Check
+the result with `dsreg --status` (expect `Registered` and `PRT Present: YES`).
+
+> [!NOTE]
+> **Registered is not the same as compliant.** Microsoft supports Intune on
+> Ubuntu, not Pop!_OS, and the device reports as *Pop!_OS 24.04*. If your
+> tenant's compliance policy only allows Ubuntu, requires disk encryption (a
+> Pop!_OS install without *Encrypt drive* fails this), or sets password rules,
+> the device can register but still be non-compliant. The Intune app lists any
+> failing setting; see entry 36's notes in the guide for each fix.
 
 ## ⚠️ Security & authorized-use notice (Wi-Fi tooling)
 
