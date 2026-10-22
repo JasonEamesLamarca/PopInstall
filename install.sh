@@ -4,7 +4,7 @@
 #
 # Distro: Jason's Pop!_OS Custom Remix
 # Base:   Pop!_OS 24.04 LTS (noble)
-# Regenerated: 2026-08-04 17:38 UTC
+# Regenerated: 2026-10-22 10:37 UTC
 
 set -euo pipefail
 
@@ -957,5 +957,67 @@ pkcon refresh force
 # AX200 free to keep the machine online.
 echo ">>> [35] Wi-Fi security auditing toolkit (wifite, bully, hashcat, hcxdumptool, hcxtools, macchanger)"
 sudo apt install -y wifite bully hashcat hcxdumptool hcxtools macchanger
+
+# ---------------------------------------------------------------------------
+# [36] Device Management: Microsoft Intune enrollment (Company Portal + Entra ID registration for Conditional Access)  (2026-10-22)
+# ---------------------------------------------------------------------------
+# Installs everything needed to enroll this machine in Microsoft Intune so it appears in
+# Microsoft Entra ID as a registered, managed device and can satisfy Conditional Access
+# policies such as 'Require device to be marked as compliant'. Installs the Microsoft Intune
+# app (intune-portal, Microsoft's Linux Company Portal), the Microsoft Identity Broker it
+# depends on (microsoft-identity-broker -- holds the device identity and does single sign-on
+# for the work account), libpam-pwquality (Intune reads its settings to evaluate password-
+# policy compliance), gnome-keyring (stores the tokens) and Microsoft Edge (the only browser
+# on Linux that can pass device state to Conditional Access, so work web apps such as
+# Outlook on the web or SharePoint see a compliant device). The packages come from
+# Microsoft's own apt repositories, same as entries 20 and 21. The last step opens the
+# Intune app: you sign in with your work account (plus MFA), it registers the device in
+# Entra ID, enrolls it in Intune and checks it against the tenant's compliance policy. That
+# sign-in cannot be scripted.
+echo ">>> [36] Microsoft Intune enrollment (Company Portal + Entra ID registration for Conditional Access)"
+# 1) Microsoft 'prod' repo (carries intune-portal + microsoft-identity-broker).
+#    Same repo entry 21 adds -- skipped if it is already there, so this entry
+#    also works on its own.
+if [ ! -f /etc/apt/sources.list.d/microsoft-prod.list ]; then
+    wget -q https://packages.microsoft.com/config/ubuntu/24.04/packages-microsoft-prod.deb \
+        -O /tmp/packages-microsoft-prod.deb
+    sudo dpkg -i /tmp/packages-microsoft-prod.deb
+    rm -f /tmp/packages-microsoft-prod.deb
+fi
+
+# 2) Microsoft Edge repo. On Linux, Conditional Access for web apps only
+#    works in Edge signed in with the work account. This is only a bootstrap:
+#    on install, Edge's own package deletes it and writes its own
+#    microsoft-edge.sources (own keyring, repos/edge-stable). So write it only
+#    when no Edge source exists yet, or a re-run would add a duplicate source.
+if ! ls /etc/apt/sources.list.d/microsoft-edge.* > /dev/null 2>&1; then
+    [ -f /usr/share/keyrings/microsoft.gpg ] || \
+        wget -qO- https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor \
+        | sudo install -D -o root -g root -m 644 /dev/stdin /usr/share/keyrings/microsoft.gpg
+    echo "deb [arch=amd64 signed-by=/usr/share/keyrings/microsoft.gpg] https://packages.microsoft.com/repos/edge stable main" \
+        | sudo tee /etc/apt/sources.list.d/microsoft-edge.list > /dev/null
+fi
+
+# 3) Packages: the Company Portal app + the Entra ID broker it depends on,
+#    pam_pwquality (password-policy compliance check), gnome-keyring
+#    (token store -- already part of Pop!_OS COSMIC) and Edge.
+sudo apt update
+sudo apt install -y libpam-pwquality gnome-keyring microsoft-identity-broker intune-portal microsoft-edge-stable
+
+# 4) Make sure the background services are up without a reboot.
+sudo systemctl daemon-reload
+sudo systemctl enable --now intune-daemon.socket
+systemctl --user daemon-reload
+systemctl --user enable --now intune-agent.timer || true
+
+# 5) Registration is interactive (work-account sign-in + MFA) and cannot be
+#    scripted: open the Company Portal detached from this terminal, sign in,
+#    and follow the prompts until it says the device is compliant/registered.
+if [ -n "${WAYLAND_DISPLAY:-}${DISPLAY:-}" ]; then
+    setsid -f env INTUNE_NO_LOG_STDOUT=1 intune-portal > /dev/null 2>&1
+    echo "    Microsoft Intune opened -- sign in with your work account to register this device."
+else
+    echo "    No graphical session -- log in to the desktop and run 'intune-portal' to register."
+fi
 
 echo "=== Done. ==="
