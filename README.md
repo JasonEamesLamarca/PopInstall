@@ -219,6 +219,10 @@ or simply running `install.sh` as a **first-boot provisioning script** on a stoc
 install. Start with the last option to validate end-to-end, then move to Cubic if
 you want a shareable `.iso`.
 
+The Intune enrollment step (entry 36) is the exception: skip it in a Cubic/chroot
+build and run `./install-wizard.py --only 36` on each machine after first boot,
+since every device has to register itself with its own user's sign-in.
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md). In short: edit `entries.json`, run
