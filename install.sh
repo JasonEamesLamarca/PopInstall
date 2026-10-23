@@ -4,7 +4,7 @@
 #
 # Distro: Jason's Pop!_OS Custom Remix
 # Base:   Pop!_OS 24.04 LTS (noble)
-# Regenerated: 2026-10-22 11:09 UTC
+# Regenerated: 2026-10-23 16:26 UTC
 
 set -euo pipefail
 
@@ -1019,5 +1019,77 @@ if [ -n "${WAYLAND_DISPLAY:-}${DISPLAY:-}" ]; then
 else
     echo "    No graphical session -- log in to the desktop and run 'intune-portal' to register."
 fi
+
+# ---------------------------------------------------------------------------
+# [37] Browsers: Microsoft Edge (native .deb from Microsoft's repo, optional second browser)  (2026-10-23)
+# ---------------------------------------------------------------------------
+# Installs Microsoft Edge as an optional second browser next to Chromium (entry 7), from
+# Microsoft's own apt repository rather than a snap or Flatpak -- same native-packages-only
+# rule as the rest of this build. Edge is useful on its own (Microsoft 365 web apps, sites
+# that only test against Edge) and is required for Intune Conditional Access (entry 36,
+# which also installs it). This entry lets Edge be picked on its own without enrolling in
+# Intune. Installing Edge does NOT change the default browser for web links; see entry 38 to
+# choose between Chromium and Edge.
+echo ">>> [37] Microsoft Edge (native .deb from Microsoft's repo, optional second browser)"
+# 1) Microsoft Edge repo. Bootstrap only: on install, Edge's own package
+#    replaces it with /etc/apt/sources.list.d/microsoft-edge.sources (own
+#    keyring, repos/edge-stable). Written only when no Edge source exists yet,
+#    so a re-run (or a machine that already ran entry 36) adds no duplicate.
+if ! ls /etc/apt/sources.list.d/microsoft-edge.* > /dev/null 2>&1; then
+    [ -f /usr/share/keyrings/microsoft.gpg ] || \
+        wget -qO- https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor \
+        | sudo install -D -o root -g root -m 644 /dev/stdin /usr/share/keyrings/microsoft.gpg
+    echo "deb [arch=amd64 signed-by=/usr/share/keyrings/microsoft.gpg] https://packages.microsoft.com/repos/edge stable main" \
+        | sudo tee /etc/apt/sources.list.d/microsoft-edge.list > /dev/null
+fi
+
+# 2) Install (no-op if entry 36 already installed it).
+sudo apt update
+sudo apt install -y microsoft-edge-stable
+
+# ---------------------------------------------------------------------------
+# [38] Browsers: Default web browser: choose Chromium or Edge  (2026-10-23)
+# ---------------------------------------------------------------------------
+# Sets the default web browser to one of the two browsers this build ships: Chromium (entry
+# 7, the default choice) or Microsoft Edge (entry 37). One setting, DEFAULT_BROWSER
+# ('chromium' or 'edge'), drives every place Linux records a default browser. These are the
+# per-user default that COSMIC, xdg-open and most apps use (xdg-settings / mimeapps.list for
+# http, https and HTML files) and the system-wide 'x-www-browser' and 'gnome-www-browser'
+# links used by sensible-browser and older tools. When Chromium is chosen, it also sets an
+# Edge policy so Edge stops asking to become the default.
+echo ">>> [38] Default web browser: choose Chromium or Edge"
+BROWSER="chromium"
+case "$BROWSER" in
+    chromium) DESKTOP=chromium.desktop;       BIN=/usr/bin/chromium ;;
+    edge)     DESKTOP=microsoft-edge.desktop; BIN=/usr/bin/microsoft-edge-stable ;;
+    *) echo "    DEFAULT_BROWSER must be 'chromium' or 'edge' (got '$BROWSER')" >&2; exit 1 ;;
+esac
+if [ ! -x "$BIN" ]; then
+    echo "    $BIN is not installed -- run entry 7 (Chromium) or 37 (Edge) first" >&2; exit 1
+fi
+
+# 1) Per-user default: what COSMIC, xdg-open and most apps follow.
+#    Run as the desktop user, never under sudo (writes ~/.config/mimeapps.list).
+xdg-settings set default-web-browser "$DESKTOP"
+for t in x-scheme-handler/http x-scheme-handler/https text/html application/xhtml+xml; do
+    xdg-mime default "$DESKTOP" "$t"
+done
+
+# 2) System-wide fallback used by sensible-browser / x-www-browser. --set puts
+#    the link in manual mode, so a later browser upgrade cannot flip it back
+#    (Edge registers at priority 200 and would win in auto mode).
+sudo update-alternatives --set x-www-browser "$BIN"
+sudo update-alternatives --set gnome-www-browser "$BIN"
+
+# 3) Edge's 'make me the default' prompt: off when Chromium is the default,
+#    back to normal when Edge is.
+POLICY=/etc/opt/edge/policies/managed/popinstall-default-browser.json
+if [ "$BROWSER" = chromium ] && [ -x /usr/bin/microsoft-edge-stable ]; then
+    sudo install -d -m 755 /etc/opt/edge/policies/managed
+    echo '{ "DefaultBrowserSettingEnabled": false }' | sudo tee "$POLICY" > /dev/null
+else
+    sudo rm -f "$POLICY"
+fi
+echo "    Default browser: $BROWSER ($(xdg-settings get default-web-browser))"
 
 echo "=== Done. ==="
