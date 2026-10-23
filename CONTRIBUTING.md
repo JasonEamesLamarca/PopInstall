@@ -15,7 +15,7 @@ next time anyone regenerates.
 1. Add or edit an entry in **`entries.json`**. Each entry has:
    ```json
    {
-     "id": 36,
+     "id": 39,
      "date": "YYYY-MM-DD",
      "category": "Networking",
      "name": "Short human-readable name",
@@ -64,7 +64,7 @@ used by two entries is prompted for only once.
 3. Commit **all three together** so they never drift:
    ```bash
    git add entries.json install.sh docs/PopOS-Customization-Guide.docx
-   git commit -m "Add entry 36: <name>"
+   git commit -m "Add entry 39: <name>"
    ```
 
 ## Please do not commit

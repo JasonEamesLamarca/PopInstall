@@ -37,7 +37,7 @@ stay in lockstep.
 
 ## What it sets up
 
-36 entries across these areas (see the guide for the full detail on each):
+38 entries across these areas (see the guide for the full detail on each):
 
 | Area | Examples |
 |------|----------|
@@ -45,7 +45,7 @@ stay in lockstep.
 | **Shell / Terminal** | oh-my-posh prompt with Nerd Font glyphs |
 | **Development** | VS Code, Node, PowerShell + Azure tooling, git/SSH setup |
 | **Applications** | Everyday GUI apps (Flatpak/apt/snap as appropriate) |
-| **Browsers** | Native-package browser installs |
+| **Browsers** | Native-package Chromium (default) and Microsoft Edge (optional); one setting picks which is the default browser |
 | **Networking** | SMB/CIFS + NFS clients, NAS mount, **Wi-Fi analysis & security-auditing toolkit** |
 | **Communication / Email** | Evolution + Exchange/Microsoft 365 backend |
 | **Device Management** | **Microsoft Intune enrollment** (Company Portal, identity broker, Edge) so the machine registers in Entra ID for Conditional Access |
@@ -157,6 +157,7 @@ instead, replace them by hand or delete the entries you don't need first:
 | `you@example.com` | Your git / SSH email |
 | `wlxXXXXXXXXXXXX` | Your Wi-Fi adapter interface name (`ip link`) |
 | `youruser` | Your local username |
+| `chromium` (entry 38) | Default browser: `chromium` or `edge` |
 
 No passwords, tokens, or keys are stored in this repo by design — credential files
 are created out-of-band and never committed.
@@ -218,6 +219,10 @@ distro: **Cubic** (easiest ISO respin), **live-build/debootstrap** (full control
 or simply running `install.sh` as a **first-boot provisioning script** on a stock
 install. Start with the last option to validate end-to-end, then move to Cubic if
 you want a shareable `.iso`.
+
+The Intune enrollment step (entry 36) is the exception: skip it in a Cubic/chroot
+build and run `./install-wizard.py --only 36` on each machine after first boot,
+since every device has to register itself with its own user's sign-in.
 
 ## Contributing
 
